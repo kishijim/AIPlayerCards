@@ -531,6 +531,17 @@
         </div>
     </div>
 
+    <!-- ★ フッター：作成者情報 ★ -->
+    <footer class="w-full text-center mt-12 pb-6 text-gray-500 text-sm">
+        <p>
+            Created by くんさき 
+            <a href="https://x.com/H3C_CHO" target="_blank" rel="noopener noreferrer" 
+               class="text-blue-400 hover:text-blue-300 hover:underline transition-colors ml-1">
+               @H3C_CHO
+            </a>
+        </p>
+    </footer>
+
     <script>
         // DOM要素の取得
         const inputs = {
@@ -872,7 +883,7 @@
         // X(Twitter)へポストする機能
         document.getElementById('twitterBtn').addEventListener('click', () => {
             // ★後からここにツールのURLを設定してください
-            const toolUrl = "https://example.com/"; // 例: https://your-domain.com/apex-card/
+            const toolUrl = "https://kishijim.github.io/AIPlayerCards/"; // 例: https://your-domain.com/apex-card/
 
             // 入力されている値を取得（なければデフォルト値）
             const playerName = inputs.name && inputs.name.value.trim() !== '' ? inputs.name.value : 'NO NAME';
@@ -887,3 +898,5 @@
             window.open(twitterUrl, '_blank');
         });
     </script>
+</body>
+</html>
