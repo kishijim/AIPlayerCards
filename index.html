@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apex Player TCG Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 画像化するためのライブラリ -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        /* Apex風のインパクトのあるフォント */
+        @import url('https://fonts.googleapis.com/css2?family=Teko:wght@400;600;700&display=swap');
+
+        body {
+            background-color: #121212;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-image: radial-gradient(circle at 50% 0%, #2d3748 0%, #121212 70%);
+            min-height: 100vh;
+        }
+
+        .apex-font {
+            font-family: 'Teko', sans-serif;
+            letter-spacing: 1px;
+        }
+
+        /* --- トレーディングカードのスタイル --- */
+        .tcg-card-container {
+            perspective: 1000px;
+        }
+
+        .tcg-card {
+            width: 340px;
+            height: auto;
+            min-height: 480px;
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            background-color: #2d3748;
+            border: 6px solid #4a5568;
+            transition: transform 0.1s ease-out, box-shadow 0.3s;
+        }
+
+        /* ランク別テーマカラー */
+        .rank-Rookie { border-color: #718096; background: linear-gradient(135deg, #4a5568, #2d3748); }
+        .rank-Bronze { border-color: #CD7F32; background: linear-gradient(135deg, #5c3a21, #8b5a2b); }
+        .rank-Silver { border-color: #C0C0C0; background: linear-gradient(135deg, #4a4a4a, #7a7a7a); }
+        .rank-Gold { border-color: #FFD700; background: linear-gradient(135deg, #5c5015, #b8860b); }
+        .rank-Platinum { border-color: #00CED1; background: linear-gradient(135deg, #154c4c, #008b8b); }
+        .rank-Diamond { border-color: #4169E1; background: linear-gradient(135deg, #15204c, #0000cd); box-shadow: 0 0 15px rgba(65, 105, 225, 0.5); }
+        .rank-Master { border-color: #a855f7; background: linear-gradient(135deg, #3b154c, #6b21a8); box-shadow: 0 0 25px rgba(168, 85, 247, 0.6); }
+        .rank-Predator { border-color: #ef4444; background: linear-gradient(135deg, #4c1515, #b91c1c); box-shadow: 0 0 35px rgba(239, 68, 68, 0.8); }
+
+        /* ホログラム（キラキラ）エフェクト */
+        .tcg-card::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(
+                105deg,
+                transparent 20%,
+                rgba(255, 255, 255, 0.4) 25%,
+                transparent 30%
+            );
+            background-size: 200% auto;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .tcg-card:hover::after {
+            opacity: 1;
+            animation: shine 2s infinite linear;
+        }
+
+        @keyframes shine {
+            to { background-position: 200% center; }
+        }
+
+        /* カード内部のレイアウト */
+        .card-inner {
+            padding: 1.2rem;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 2;
+            background: url('data:image/svg+xml;utf8,<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><circle cx="2" cy="2" r="1" fill="rgba(255,255,255,0.05)"/></svg>');
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .player-name {
+            font-size: 2.2rem;
+            line-height: 1;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 70%;
+        }
+
+        .rank-text {
+            font-size: 1.2rem;
+            color: #ffd700;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        /* AI画像表示エリア */
+        .ai-image-area {
+            height: 200px;
+            width: 100%;
+            background-color: #1a202c;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255,255,255,0.2);
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+            background-size: cover;
+            background-position: center;
+        }
+
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ステータスグリッド */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            background: rgba(0,0,0,0.6);
+            padding: 0.8rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-label {
+            font-size: 0.65rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            color: #fff;
+            text-shadow: 1px 1px 2px black;
+            line-height: 1.2;
+        }
+        
+        .stat-value-small {
+            font-size: 1.1rem;
+            color: #cbd5e0;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        /* フレーバーテキスト（スキル欄のような装飾） */
+        .flavor-text {
+            margin-top: 1rem;
+            font-size: 0.75rem;
+            color: #a0aec0;
+            text-align: center;
+            font-style: italic;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 0.5rem;
+            flex-grow: 1;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        /* フォームのスタイル */
+        .input-group label {
+            display: block;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+            color: #94a3b8;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: white;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-group input:focus, .input-group select:focus {
+            border-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center md:text-left">
+            <h1 class="text-4xl apex-font text-white mb-2 tracking-widest">PLAYER CARD GENERATOR</h1>
+            <p class="text-gray-400">ステータスを入力して、君だけのプレイヤーカードを生成しよう。</p>
+        </header>
+
+        <div class="flex flex-col md:flex-row gap-8 lg:gap-16 items-start">
+            
+            <!-- 左側: 入力フォーム -->
+            <div class="w-full md:w-1/2 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                <h2 class="text-xl font-bold mb-6 border-b border-gray-700 pb-2 text-white">ステータス入力</h2>
+                
+                <form id="cardForm" class="space-y-4">
+                    <div class="input-group">
+                        <label for="playerName">プレイヤー名</label>
+                        <input type="text" id="playerName" value="NO NAME" maxlength="15" autocomplete="off">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label for="playerRank">最高ランク</label>
+                            <select id="playerRank">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="Rookie">ルーキー</option>
+                                <option value="Bronze">ブロンズ</option>
+                                <option value="Silver">シルバー</option>
+                                <option value="Gold">ゴールド</option>
+                                <option value="Platinum">プラチナ</option>
+                                <option value="Diamond">ダイヤ</option>
+                                <option value="Master">マスター</option>
+                                <option value="Predator">プレデター</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="playerKD">K/D (キルレ)</label>
+                            <select id="playerKD">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="0.1">0.1</option>
+                                <option value="0.2">0.2</option>
+                                <option value="0.3">0.3</option>
+                                <option value="0.4">0.4</option>
+                                <option value="0.5">0.5</option>
+                                <option value="0.6">0.6</option>
+                                <option value="0.7">0.7</option>
+                                <option value="0.8">0.8</option>
+                                <option value="0.9">0.9</option>
+                                <option value="1.0">1.0</option>
+                                <option value="1.1">1.1</option>
+                                <option value="1.2">1.2</option>
+                                <option value="1.3">1.3</option>
+                                <option value="1.4">1.4</option>
+                                <option value="1.5">1.5</option>
+                                <option value="1.6">1.6</option>
+                                <option value="1.7">1.7</option>
+                                <option value="1.8">1.8</option>
+                                <option value="1.9">1.9</option>
+                                <option value="2.0">2.0</option>
+                                <option value="2.1">2.1</option>
+                                <option value="2.2">2.2</option>
+                                <option value="2.3">2.3</option>
+                                <option value="2.4">2.4</option>
+                                <option value="2.5">2.5</option>
+                                <option value="2.6">2.6</option>
+                                <option value="2.7">2.7</option>
+                                <option value="2.8">2.8</option>
+                                <option value="2.9">2.9</option>
+                                <option value="3.0">3.0</option>
+                                <option value="3.1">3.1</option>
+                                <option value="3.2">3.2</option>
+                                <option value="3.3">3.3</option>
+                                <option value="3.4">3.4</option>
+                                <option value="3.5">3.5</option>
+                                <option value="3.6">3.6</option>
+                                <option value="3.7">3.7</option>
+                                <option value="3.8">3.8</option>
+                                <option value="3.9">3.9</option>
+                                <option value="4.0">4.0</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label for="playerDmg">最高ダメージ</label>
+                            <select id="playerDmg">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="500">500</option>
+                                <option value="1000">1000</option>
+                                <option value="1500">1500</option>
+                                <option value="2000">2000</option>
+                                <option value="2500">2500</option>
+                                <option value="3000">3000</option>
+                                <option value="3500">3500</option>
+                                <option value="4000">4000</option>
+                                <option value="4500">4500</option>
+                                <option value="5000">5000</option>
+                                <option value="5500">5500</option>
+                                <option value="6000">6000</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="playerMotif">モチーフ (AI画像用)</label>
+                            <input type="text" id="playerMotif" value="" placeholder="動物やモノを入力" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label for="favLegend1">好きなレジェンド</label>
+                            <select id="favLegend1">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="BLOODHOUND">ブラッドハウンド</option>
+                                <option value="GIBRALTAR">ジブラルタル</option>
+                                <option value="LIFELINE">ライフライン</option>
+                                <option value="PATHFINDER">パスファインダー</option>
+                                <option value="WRAITH">レイス</option>
+                                <option value="BANGALORE">バンガロール</option>
+                                <option value="CAUSTIC">コースティック</option>
+                                <option value="MIRAGE">ミラージュ</option>
+                                <option value="OCTANE">オクタン</option>
+                                <option value="WATTSON">ワットソン</option>
+                                <option value="CRYPTO">クリプト</option>
+                                <option value="REVENANT">レヴナント</option>
+                                <option value="LOBA">ローバ</option>
+                                <option value="RAMPART">ランパート</option>
+                                <option value="HORIZON">ホライゾン</option>
+                                <option value="FUSE">ヒューズ</option>
+                                <option value="VALKYRIE">ヴァルキリー</option>
+                                <option value="SEER">シア</option>
+                                <option value="ASH">アッシュ</option>
+                                <option value="MAD_MAGGIE">マッドマギー</option>
+                                <option value="NEWCASTLE">ニューキャッスル</option>
+                                <option value="VANTAGE">ヴァンテージ</option>
+                                <option value="CATALYST">カタリスト</option>
+                                <option value="BALLISTIC">バリスティック</option>
+                                <option value="CONDUIT">コンジット</option>
+                                <option value="ALTER">オルター</option>
+                                <option value="SPARROW">スパロー</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="favMap">好きなマップ</label>
+                            <select id="favMap">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="WORLD'S EDGE">ワールズエッジ</option>
+                                <option value="OLYMPUS">オリンパス</option>
+                                <option value="KINGS CANYON">キングスキャニオン</option>
+                                <option value="STORM POINT">ストームポイント</option>
+                                <option value="BROKEN MOON">ブロークンムーン</option>
+                                <option value="E-DISTRICT">E-ディストリクト</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="favWeapon1">得意武器</label>
+                        <select id="favWeapon1" class="w-full">
+                            <option value="" selected hidden>選択してください</option>
+                            <optgroup label="アサルトライフル">
+                                <option value="HAVOC_AR">ハボックライフル</option>
+                                <option value="FLATLINE_AR">VK-47フラットライン</option>
+                                <option value="HEMLOK_AR">ヘムロックバーストAR</option>
+                                <option value="R301_AR">R-301カービン</option>
+                                <option value="NEMESIS_AR">ネメシスバーストAR</option>
+                            </optgroup>
+                            <optgroup label="サブマシンガン（SMG）">
+                                <option value="ALTERNATOR_SMG">オルタネーターSMG</option>
+                                <option value="PROWLER_SMG">プラウラーバーストPDW</option>
+                                <option value="R99_SMG">R99 SMG</option>
+                                <option value="VOLT_SMG">ボルトSMG</option>
+                                <option value="CAR_SMG">C.A.R. SMG</option>
+                            </optgroup>
+                            <optgroup label="ライトマシンガン（LMG）">
+                                <option value="DEVOTION_LMG">ディヴォーションLMG</option>
+                                <option value="LSTAR_LMG">L-スターEMG</option>
+                                <option value="SPITFIRE_LMG">M600スピットファイア</option>
+                                <option value="RAMPAGE_LMG">ランページLMG</option>
+                            </optgroup>
+                            <optgroup label="マークスマン">
+                                <option value="G7_MRK">G7スカウト</option>
+                                <option value="TRIPLETAKE_MRK">トリプルテイク</option>
+                                <option value="3030_MRK">30-30リピーター</option>
+                                <option value="BOCEK_BOW">ボセック</option>
+                            </optgroup>
+                            <optgroup label="スナイパーライフル">
+                                <option value="CHARGE_SR">チャージライフル</option>
+                                <option value="LONGBOW_SR">ロングボウDMR</option>
+                                <option value="KRABER_SR">クレーバー.50スナイパー</option>
+                                <option value="SENTINEL_SR">センチネル</option>
+                            </optgroup>
+                            <optgroup label="ショットガン">
+                                <option value="EVA8_SG">EVA-8オート</option>
+                                <option value="MASTIFF_SG">マスティフ</option>
+                                <option value="MOZAMBIQUE_SG">モザンビークショットガン</option>
+                                <option value="PEACEKEEPER_SG">ピースキーパー</option>
+                            </optgroup>
+                            <optgroup label="ピストル">
+                                <option value="RE45_PST">RE-45オート</option>
+                                <option value="P2020_PST">P2020</option>
+                                <option value="WINGMAN_REV">ウィングマン</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label for="playStyle">プレイスタイル</label>
+                            <select id="playStyle">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="キルムーブ">キルムーブ</option>
+                                <option value="確実に盛るムーブ">確実に盛るムーブ</option>
+                                <option value="楽しくワイワイ">楽しくワイワイ</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="seasonGoal">今シーズンの目標</label>
+                            <select id="seasonGoal">
+                                <option value="" selected hidden>選択してください</option>
+                                <option value="プラチナ到達">プラチナ到達</option>
+                                <option value="ダイヤ到達">ダイヤ到達</option>
+                                <option value="マスター到達">マスター到達</option>
+                                <option value="プレデター維持">プレデター維持</option>
+                                <option value="楽しくランク！">楽しくランク！</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="freeText">ひとこと (自由記述)</label>
+                        <input type="text" id="freeText" value="一緒にチャンピオン獲りましょう！" maxlength="40" autocomplete="off" placeholder="40文字以内で入力">
+                    </div>
+                </form>
+                
+                <div class="mt-6 space-y-3">
+                    <button id="generateAiBtn" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center shadow-lg">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                        今の設定でAIイメージ画像を生成
+                    </button>
+
+                    <button id="downloadBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center shadow-lg">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        カードを画像として保存
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2 text-center">※画像生成には数秒かかります。完成後「保存」を押してください。</p>
+
+                    <!-- X（Twitter）投稿ボタンを追加 -->
+                    <div class="pt-4 mt-4 border-t border-gray-700">
+                        <button id="twitterBtn" class="w-full bg-black hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center shadow-lg border border-gray-600">
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.008 5.95H5.078z"/></svg>
+                            𝕏 にポストする
+                        </button>
+                        <p class="text-xs text-gray-400 mt-2 text-center">※上のボタンで画像を保存してから、Xの画面で添付してください</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側: カードプレビュー -->
+            <div class="w-full md:w-1/2 flex justify-center items-center py-4">
+                <div class="tcg-card-container">
+                    <!-- 保存対象となるカード本体 -->
+                    <div id="captureArea" class="tcg-card rank-Master">
+                        <div class="card-inner">
+                            
+                            <!-- ヘッダー (名前とランク) -->
+                            <div class="card-header apex-font">
+                                <div id="outName" class="player-name">NO NAME</div>
+                                <div id="outRank" class="rank-text" style="color: #94a3b8;">UNRANKED</div>
+                            </div>
+
+                            <!-- AI画像エリア -->
+                            <div id="aiImageArea" class="ai-image-area">
+                                <div id="aiLoader" class="loader"></div>
+                                <span id="aiPlaceholder" class="text-gray-500 text-sm font-sans">No Image<br>(AI画像を生成してください)</span>
+                            </div>
+
+                            <!-- ステータスエリア -->
+                            <div class="stat-grid apex-font">
+                                <div class="stat-box col-span-2">
+                                    <span class="stat-label">Fav Legend</span>
+                                    <span id="outLegends" class="stat-value-small font-sans font-bold text-sm tracking-normal">-</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="stat-label">Play Style</span>
+                                    <span id="outStyle" class="stat-value-small font-sans font-bold text-sm tracking-normal">-</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="stat-label">Season Goal</span>
+                                    <span id="outGoal" class="stat-value-small font-sans font-bold text-sm text-yellow-400 tracking-normal">-</span>
+                                </div>
+                                <div class="stat-box col-span-2">
+                                    <span class="stat-label">Fav Weapon</span>
+                                    <span id="outWeapons" class="stat-value-small font-sans font-bold text-sm tracking-normal">-</span>
+                                </div>
+                            </div>
+
+                            <div id="outFreeText" class="flavor-text">
+                                <div>"一緒にチャンピオン獲りましょう！"</div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // DOM要素の取得
+        const inputs = {
+            name: document.getElementById('playerName'),
+            rank: document.getElementById('playerRank'),
+            kd: document.getElementById('playerKD'),
+            dmg: document.getElementById('playerDmg'),
+            motif: document.getElementById('playerMotif'),
+            legend1: document.getElementById('favLegend1'),
+            weapon1: document.getElementById('favWeapon1'),
+            map: document.getElementById('favMap'),
+            style: document.getElementById('playStyle'),
+            goal: document.getElementById('seasonGoal'),
+            freeText: document.getElementById('freeText')
+        };
+
+        const outputs = {
+            card: document.getElementById('captureArea'),
+            name: document.getElementById('outName'),
+            rank: document.getElementById('outRank'),
+            legends: document.getElementById('outLegends'),
+            weapons: document.getElementById('outWeapons'),
+            style: document.getElementById('outStyle'),
+            goal: document.getElementById('outGoal'),
+            freeText: document.getElementById('outFreeText')
+        };
+
+        const apiKey = ""; // APIキーは環境から自動で取得されます
+
+        // 武器のカテゴリーに基づくAIプロンプト変換関数
+        function getWeaponPrompt(weaponVal) {
+            if(!weaponVal) return "holding a sci-fi weapon";
+            if(weaponVal.includes("_AR")) return "holding a futuristic assault rifle in hands";
+            if(weaponVal.includes("_SMG")) return "holding a compact sci-fi submachine gun";
+            if(weaponVal.includes("_LMG")) return "wielding a heavy, bulky sci-fi machine gun";
+            if(weaponVal.includes("_BOW")) return "wielding a high-tech tactical compound bow";
+            if(weaponVal.includes("_MRK")) return "holding a sci-fi marksman rifle";
+            if(weaponVal.includes("_SR")) return "aiming a long-barrel sci-fi sniper rifle";
+            if(weaponVal.includes("_SG")) return "holding a futuristic heavy combat shotgun";
+            if(weaponVal.includes("_REV")) return "holding a heavy sci-fi revolver pistol";
+            if(weaponVal.includes("_PST")) return "holding a sleek sci-fi pistol";
+            return "holding a sci-fi weapon";
+        }
+
+        // カードの表示を更新する関数
+        function updateCard() {
+            // テキストの更新
+            if (inputs.name) outputs.name.textContent = inputs.name.value || 'UNKNOWN';
+            
+            // ランクの表示と色の変更
+            if (inputs.rank && inputs.rank.value !== "") {
+                outputs.rank.textContent = inputs.rank.options[inputs.rank.selectedIndex].text;
+                outputs.card.className = `tcg-card rank-${inputs.rank.value}`;
+                
+                // ランクバッジのテキストカラー調整
+                if (inputs.rank.value === 'Predator') {
+                    outputs.rank.style.color = '#ff4444';
+                } else if (inputs.rank.value === 'Diamond') {
+                    outputs.rank.style.color = '#88b8ff';
+                } else if (inputs.rank.value === 'Master') {
+                    outputs.rank.style.color = '#e0a0ff';
+                } else {
+                    outputs.rank.style.color = '#ffd700'; // デフォルトはゴールド系
+                }
+            } else {
+                outputs.rank.textContent = "UNRANKED";
+                outputs.rank.style.color = '#94a3b8';
+                outputs.card.className = `tcg-card rank-Rookie`;
+            }
+            
+            // レジェンドの表示
+            if (inputs.legend1 && inputs.legend1.value !== "") {
+                outputs.legends.textContent = inputs.legend1.options[inputs.legend1.selectedIndex].text;
+            } else {
+                outputs.legends.textContent = "-";
+            }
+
+            // プレイスタイルと目標
+            if (inputs.style && inputs.style.value !== "") {
+                outputs.style.textContent = inputs.style.value;
+            } else {
+                outputs.style.textContent = "-";
+            }
+            if (inputs.goal && inputs.goal.value !== "") {
+                outputs.goal.textContent = inputs.goal.value;
+            } else {
+                outputs.goal.textContent = "-";
+            }
+
+            // 武器の表示
+            if (inputs.weapon1 && inputs.weapon1.value !== "") {
+                const w1 = inputs.weapon1.options[inputs.weapon1.selectedIndex].text;
+                // カード上のスペース確保のため、武器名は少し短縮する工夫
+                let weaponStr = w1.replace('VK-47', '')
+                                  .replace('カービン', '')
+                                  .replace('SMG', '')
+                                  .replace('バーストAR', '')
+                                  .replace('オート', '')
+                                  .replace('ショットガン', '')
+                                  .replace('.50スナイパー', '')
+                                  .trim();
+                outputs.weapons.textContent = weaponStr;
+            } else {
+                outputs.weapons.textContent = "-";
+            }
+
+            // フレーバーテキスト（自由記述）の更新
+            if (inputs.freeText) {
+                if (inputs.freeText.value.trim() !== '') {
+                    outputs.freeText.innerHTML = `<div>"${inputs.freeText.value}"</div>`;
+                } else {
+                    outputs.freeText.innerHTML = "";
+                }
+            }
+
+            // ランクに応じたクラス（色）の変更
+            if (inputs.rank) {
+                outputs.card.className = `tcg-card rank-${inputs.rank.value}`;
+                
+                // ランクバッジのテキストカラー調整
+                if (inputs.rank.value === 'Predator') {
+                    outputs.rank.style.color = '#ff4444';
+                } else if (inputs.rank.value === 'Diamond') {
+                    outputs.rank.style.color = '#88b8ff';
+                } else if (inputs.rank.value === 'Master') {
+                    outputs.rank.style.color = '#e0a0ff';
+                } else {
+                    outputs.rank.style.color = '#ffd700'; // デフォルトはゴールド系
+                }
+            }
+        }
+
+        // AI画像生成機能
+        document.getElementById('generateAiBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('generateAiBtn');
+            const imgArea = document.getElementById('aiImageArea');
+            const loader = document.getElementById('aiLoader');
+            const placeholder = document.getElementById('aiPlaceholder');
+            
+            const originalBtnText = btn.innerHTML;
+            btn.innerHTML = '生成中... (数秒かかります)';
+            btn.disabled = true;
+            
+            loader.style.display = 'block';
+            placeholder.style.display = 'none';
+            imgArea.style.backgroundImage = 'none';
+
+            // 入力値からプロンプトを構築
+            const rank = inputs.rank && inputs.rank.value !== "" ? inputs.rank.value : 'Master';
+            const style = inputs.style && inputs.style.value !== "" ? inputs.style.value : '確実に盛るムーブ';
+            const mapVal = inputs.map && inputs.map.value !== "" ? inputs.map.value : "WORLD'S EDGE";
+            const kd = inputs.kd && inputs.kd.value !== "" ? inputs.kd.value : '1.5';
+            const dmg = inputs.dmg && inputs.dmg.value !== "" ? inputs.dmg.value : '4000';
+            const motifVal = inputs.motif && inputs.motif.value.trim() !== '' ? inputs.motif.value.trim() : 'サイバーパンク'; 
+            
+            // 選択されたレジェンドの設定・アビリティ要素をプロンプト用に抽出
+            const legendKey = inputs.legend1 && inputs.legend1.value !== "" ? inputs.legend1.value : 'PATHFINDER';
+            let legendPrompt = "";
+            switch (legendKey) {
+                case "BLOODHOUND": legendPrompt = "gas mask, tracker, ravens, red highlighted vision, beast of the hunt"; break;
+                case "GIBRALTAR": legendPrompt = "large muscular build, gun shield, protective dome, mortar strike, heavy defense armor"; break;
+                case "LIFELINE": legendPrompt = "combat medic, D.O.C. healing drone, halo shield system, energetic vibe"; break;
+                case "PATHFINDER": legendPrompt = "robotic MRVN, grappling hook, zipline gun, screen with a smiley face"; break;
+                case "WRAITH": legendPrompt = "ninja-like skirmisher, interdimensional portals, glowing void energy, dark hair"; break;
+                case "BANGALORE": legendPrompt = "military-grade armor, smoke launcher, rolling thunder artillery"; break;
+                case "CAUSTIC": legendPrompt = "scientist wearing a gas mask and thick beard, toxic yellow-green Nox gas, heavy suit"; break;
+                case "MIRAGE": legendPrompt = "charming trickster, yellow and black outfit, goggles, holographic decoys"; break;
+                case "OCTANE": legendPrompt = "daredevil with robotic prosthetic legs, wearing a mask and goggles, green stim energy, jump pad"; break;
+                case "WATTSON": legendPrompt = "defender, yellow and blue jacket, electrical engineering gear, electric fences, interceptor pylon"; break;
+                case "CRYPTO": legendPrompt = "engineer, white and green jacket, flying surveillance drone, EMP energy, cool hacker vibe"; break;
+                case "REVENANT": legendPrompt = "terrifying robotic simulacrum assassin, red glowing eyes, shadow energy, skull face"; break;
+                case "LOBA": legendPrompt = "glamorous thief, elegant tactical outfit, wolf motifs, teleporting bracelet, luxurious black market vibe"; break;
+                case "RAMPART": legendPrompt = "weapons modder, carrying a heavy minigun (Sheila), welding mask, barricades"; break;
+                case "HORIZON": legendPrompt = "scientist, spacesuit elements, gravity lift, small black hole (N.E.W.T.), manipulating gravity"; break;
+                case "FUSE": legendPrompt = "explosives enthusiast, robotic arm, eye patch, carrying grenades and firing a motherlode of fire"; break;
+                case "VALKYRIE": legendPrompt = "pilot wearing a jetpack made from titan parts, firing missile swarms, flying in the sky"; break;
+                case "SEER": legendPrompt = "stylish artist, wearing a wide-brimmed hat, elegant afrofuturism attire, micro-drone swarm, heart seeker"; break;
+                case "ASH": legendPrompt = "robotic simulacrum, cold and precise, holding a sword and an arc snare, hood and mask, dimensional tears"; break;
+                case "MAD_MAGGIE": legendPrompt = "fierce warlord, Maori warrior elements, rugged combat gear, holding a riot drill, wrecking ball"; break;
+                case "NEWCASTLE": legendPrompt = "defender in heavy knight-like sci-fi armor, carrying a mobile shield and castle wall"; break;
+                case "VANTAGE": legendPrompt = "survivalist sniper, rugged outdoor gear, accompanied by a small bat-like creature (Echo)"; break;
+                case "CATALYST": legendPrompt = "terraformer, manipulating black magnetic fluid (ferrofluid) into spikes and walls, gothic sci-fi attire"; break;
+                case "BALLISTIC": legendPrompt = "gentleman gunslinger, refined tactical duster coat, smart-pistol, overdrive tempest energy"; break;
+                case "CONDUIT": legendPrompt = "armor powered by glowing radioactive batteries, bright yellow and blue energy, supportive"; break;
+                case "ALTER": legendPrompt = "dimensional traveler, void energy, tail-like appendage, void portals, cyberpunk/chinese fusion attire"; break;
+                case "SPARROW": legendPrompt = "agile recon, wearing a gauntlet for tracking darts, wielding a high-tech bow with explosive arrows, double jumping"; break;
+                default: legendPrompt = "sci-fi soldier";
+            }
+
+            const weaponVal = inputs.weapon1 && inputs.weapon1.value !== "" ? inputs.weapon1.value : 'FLATLINE_AR';
+            const weaponAction = getWeaponPrompt(weaponVal);
+
+            // プレイスタイルに応じた雰囲気付け
+            let mood = "action-packed, dynamic, sci-fi battle";
+            if (style === "キルムーブ") mood = "aggressive, intense combat, highly skilled, red energy";
+            if (style === "確実に盛るムーブ") mood = "tactical, strategic, cautious, stealthy, blue tactical light";
+            if (style === "楽しくワイワイ") mood = "fun, vibrant, energetic squad, colorful smoke";
+
+            // ランクとダメージから「強さの総合スコア」を計算し、キャラクターの進化度を決定
+            const rankScore = { 'Rookie': 0, 'Bronze': 1, 'Silver': 2, 'Gold': 3, 'Platinum': 4, 'Diamond': 5, 'Master': 6, 'Predator': 7 }[rank];
+            const dmgScore = parseInt(dmg);
+            const totalPowerScore = (rankScore * 500) + dmgScore;
+
+            let characterEvolution = "";
+            let weaponPrompt = `The character is clearly ${weaponAction}.`;
+
+            if (totalPowerScore <= 2000) {
+                characterEvolution = `a very cute, completely harmless character heavily inspired by the motif of "${motifVal}", appearing like a confused baby or toddler wearing oversized sci-fi gear`;
+                weaponPrompt = "Strictly NO weapons. Unarmed, holding a toy instead of a gun.";
+            } else if (totalPowerScore <= 4500) {
+                characterEvolution = `a rookie character heavily inspired by the motif of "${motifVal}", looking a bit nervous and inexperienced, wearing basic and slightly clunky sci-fi armor`;
+            } else if (totalPowerScore <= 7500) {
+                characterEvolution = `a battle-hardened veteran character heavily inspired by the motif of "${motifVal}", confident and sharp, wearing customized elite sci-fi armor with visible battle scars`;
+            } else {
+                characterEvolution = `an absolute god of destruction character heavily inspired by the motif of "${motifVal}", a terrifying apex predator, ultimate cybernetic warlord, radiating an overwhelming, intimidating aura, glowing with power`;
+                weaponPrompt = `The character is fiercely ${weaponAction}, holding glowing futuristic hyper-guns looking extremely deadly.`;
+            }
+
+            let mapPrompt = "";
+            switch(mapVal) {
+                case "WORLD'S EDGE": mapPrompt = "Volcanic landscape, lava fissures, icy epicenters, abandoned industrial facilities"; break;
+                case "OLYMPUS": mapPrompt = "Floating city in the clouds, clean futuristic architecture, lush gardens, bright blue sky"; break;
+                case "KINGS CANYON": mapPrompt = "Desert canyon, military bases, giant leviathan bones, rugged terrain"; break;
+                case "STORM POINT": mapPrompt = "Tropical island, beaches, jungles, massive gravity cannons, stormy weather elements"; break;
+                case "BROKEN MOON": mapPrompt = "Lunar landscape, zip rails, terraforming facilities, space colony"; break;
+                case "E-DISTRICT": mapPrompt = "Neon-lit cyberpunk city, glowing skyscrapers, urban neon night streets, high-tech metropolis"; break;
+                default: mapPrompt = mapVal;
+            }
+
+            const prompt = `Main subject: ${characterEvolution}. A stylized, high-quality concept art illustration for a sci-fi battle royale player profile. Theme: Cyberpunk/Sci-Fi. Character design strongly inspired by: ${legendPrompt}. Environment: ${mapPrompt}. ${weaponPrompt} Mood: ${mood}. Masterpiece, highly detailed, dramatic lighting. **Strict rule: No text, no letters, no words in the image.**`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+            const payload = {
+                instances: { prompt: prompt },
+                parameters: { sampleCount: 1 }
+            };
+
+            let retries = 5;
+            let delay = 1000;
+            let base64Image = null;
+
+            while (retries > 0) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.predictions && result.predictions[0]) {
+                            base64Image = result.predictions[0].bytesBase64Encoded;
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    // console.error(error);
+                }
+                retries--;
+                await new Promise(r => setTimeout(r, delay));
+                delay *= 2;
+            }
+
+            btn.innerHTML = originalBtnText;
+            btn.disabled = false;
+            loader.style.display = 'none';
+
+            if (base64Image) {
+                imgArea.style.backgroundImage = `url(data:image/png;base64,${base64Image})`;
+            } else {
+                placeholder.style.display = 'block';
+                placeholder.innerHTML = '画像生成に失敗しました<br>もう一度お試しください';
+            }
+        });
+
+        // 全ての入力フォームにイベントリスナーを追加
+        Object.values(inputs).forEach(input => {
+            if (input) {
+                input.addEventListener('input', updateCard);
+                input.addEventListener('change', updateCard);
+            }
+        });
+
+        // 初期表示の更新
+        updateCard();
+
+        // 3Dホバーエフェクト
+        const cardContainer = document.querySelector('.tcg-card-container');
+        const card = document.getElementById('captureArea');
+
+        cardContainer.addEventListener('mousemove', (e) => {
+            const rect = cardContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            
+            const rotateX = ((y - centerY) / centerY) * -10; 
+            const rotateY = ((x - centerX) / centerX) * 10;
+            
+            card.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        });
+
+        cardContainer.addEventListener('mouseleave', () => {
+            card.style.transform = 'rotateX(0) rotateY(0)';
+        });
+
+        // 画像として保存機能
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const btn = document.getElementById('downloadBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '生成中...';
+            btn.disabled = true;
+
+            card.style.transform = 'rotateX(0) rotateY(0)';
+
+            html2canvas(card, {
+                scale: 2, 
+                backgroundColor: null, 
+                logging: false
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `ApexCard_${inputs.name ? (inputs.name.value || 'Player') : 'Player'}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }).catch(err => {
+                console.error('画像生成エラー:', err);
+                alert('画像の生成に失敗しました。');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
+        });
+
+        // X(Twitter)へポストする機能
+        document.getElementById('twitterBtn').addEventListener('click', () => {
+            // ★後からここにツールのURLを設定してください
+            const toolUrl = "https://example.com/"; // 例: https://your-domain.com/apex-card/
+
+            // 入力されている値を取得（なければデフォルト値）
+            const playerName = inputs.name && inputs.name.value.trim() !== '' ? inputs.name.value : 'NO NAME';
+            const playerRank = inputs.rank && inputs.rank.value !== "" ? inputs.rank.options[inputs.rank.selectedIndex].text : '未設定';
+            const playerMotif = inputs.motif && inputs.motif.value.trim() !== '' ? inputs.motif.value : '未設定';
+            
+            // Xに投稿するテキストを作成
+            const tweetText = `${playerName} のApexプレイヤーカードを作成しました！\n\n🔹最高ランク: ${playerRank}\n🔹モチーフ: ${playerMotif}\n\n#ApexLegends #Apex募集 #ApexAIプレイヤーカード\n\n${toolUrl}`;
+            
+            // Web Intent URLを生成して別タブで開く
+            const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+            window.open(twitterUrl, '_blank');
+        });
+    </script>
