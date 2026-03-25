@@ -569,7 +569,7 @@
             freeText: document.getElementById('outFreeText')
         };
 
-        const apiKey = "AIzaSyCQuGr64CnexDzPVZuPrBcxmcphXB0RkS4"; // APIキーは環境から自動で取得されます
+        const apiKey = ""; // APIキーは環境から自動で取得されます
 
         // 武器のカテゴリーに基づくAIプロンプト変換関数
         function getWeaponPrompt(weaponVal) {
@@ -782,6 +782,13 @@
             let retries = 5;
             let delay = 1000;
             let base64Image = null;
+            let lastErrorMessage = "";
+
+            // 1. そもそもAPIキーが設定されていない場合
+            if (!apiKey) {
+                lastErrorMessage = "APIキーが設定されていません。コード内の apiKey を設定してください。";
+                retries = 0; // リトライしない
+            }
 
             while (retries > 0) {
                 try {
@@ -795,15 +802,37 @@
                         const result = await response.json();
                         if (result.predictions && result.predictions[0]) {
                             base64Image = result.predictions[0].bytesBase64Encoded;
-                            break;
+                            break; // 成功したらループを抜ける
+                        } else {
+                            throw new Error("APIからの応答に画像データが含まれていませんでした。");
                         }
+                    } else {
+                        // 2. HTTPステータスに応じたエラーハンドリング
+                        const status = response.status;
+                        if (status === 400) throw new Error(`不正なリクエスト (400): プロンプトが規約に違反している等の可能性があります。`);
+                        if (status === 403) throw new Error(`アクセス権限エラー (403): APIキーが無効、または対象モデルへのアクセス権限がありません。`);
+                        if (status === 429) throw new Error(`リクエスト過多 (429): しばらく待ってから再度お試しください。`);
+                        if (status >= 500) throw new Error(`サーバーエラー (${status}): APIサーバー側で問題が発生しています。`);
+                        throw new Error(`APIエラー (ステータス: ${status})`);
                     }
                 } catch (error) {
-                    // console.error(error);
+                    lastErrorMessage = error.message;
+                    // 3. ネットワーク自体が遮断されている場合 (TypeError: Failed to fetch など)
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        lastErrorMessage = "ネットワーク通信に失敗しました。ネット環境を確認してください。";
+                    }
                 }
+                
                 retries--;
-                await new Promise(r => setTimeout(r, delay));
-                delay *= 2;
+                if (retries > 0) {
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2; // エクスポネンシャルバックオフ (1s, 2s, 4s, 8s...)
+                }
+            }
+
+            // 4. すべてのリトライを終えても画像がなく、エラー文もない場合はタイムアウト
+            if (!base64Image && !lastErrorMessage) {
+                lastErrorMessage = "タイムアウト: 複数回試行しましたが生成できませんでした。";
             }
 
             btn.innerHTML = originalBtnText;
@@ -813,8 +842,9 @@
             if (base64Image) {
                 imgArea.style.backgroundImage = `url(data:image/png;base64,${base64Image})`;
             } else {
+                // エラー内容を画面に表示
                 placeholder.style.display = 'block';
-                placeholder.innerHTML = '画像生成に失敗しました<br><span class="text-xs text-red-400 mt-1 inline-block">※GitHub Pages等で動かす場合は、コード内の<br>「apiKey」にご自身のAPIキーを設定してください</span>';
+                placeholder.innerHTML = `<span class="text-red-400 font-bold">画像生成に失敗しました</span><br><span class="text-xs text-gray-300 mt-2 inline-block leading-tight">原因: ${lastErrorMessage}</span>`;
             }
         });
 
