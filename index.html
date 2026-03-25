@@ -814,7 +814,7 @@
                 imgArea.style.backgroundImage = `url(data:image/png;base64,${base64Image})`;
             } else {
                 placeholder.style.display = 'block';
-                placeholder.innerHTML = '画像生成に失敗しました<br>もう一度お試しください';
+                placeholder.innerHTML = '画像生成に失敗しました<br><span class="text-xs text-red-400 mt-1 inline-block">※GitHub Pages等で動かす場合は、コード内の<br>「apiKey」にご自身のAPIキーを設定してください</span>';
             }
         });
 
@@ -863,6 +863,8 @@
             html2canvas(card, {
                 scale: 2, 
                 backgroundColor: null, 
+                useCORS: true,      // ★追加: 外部画像の描画を許可(GitHub Pages用)
+                allowTaint: false,  // ★追加: 汚染キャンバスを防ぐ
                 logging: false
             }).then(canvas => {
                 const link = document.createElement('a');
@@ -883,7 +885,7 @@
         // X(Twitter)へポストする機能
         document.getElementById('twitterBtn').addEventListener('click', () => {
             // ★後からここにツールのURLを設定してください
-            const toolUrl = "https://kishijim.github.io/AIPlayerCards/"; // 例: https://your-domain.com/apex-card/
+            const toolUrl = "https://example.com/"; // 例: https://your-domain.com/apex-card/
 
             // 入力されている値を取得（なければデフォルト値）
             const playerName = inputs.name && inputs.name.value.trim() !== '' ? inputs.name.value : 'NO NAME';
